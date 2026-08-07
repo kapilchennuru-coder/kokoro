@@ -1,0 +1,42 @@
+# Zebl - Asterisk PBX (test/prototype)
+#
+# Runs Asterisk in a container since Asterisk has no real native
+# Windows support. Config files below are mounted from ./config so
+# they're easy to edit without rebuilding the container.
+#
+# SIP trunk credentials (VoIP Office) are filled into
+# config/pjsip.conf. Uses andrius/asterisk:stable - CONFIRMED REAL BUG
+# (2026-08-05): the ":alpine-cert" tag used earlier doesn't exist in
+# this image's repo at all (verified against Docker Hub's real tag
+# list) - ":stable" is a real, valid tag.
+
+services:
+  asterisk:
+    image: andrius/asterisk:stable
+    container_name: zebl_asterisk
+    restart: unless-stopped
+    ports:
+      # SIP signaling - plain UDP/TCP 5060 kept for completeness, but
+      # CONFIRMED this network blocks it entirely - 5061/TLS is the
+      # one that actually works, see pjsip.conf's comments.
+      - "5060:5060/udp"
+      - "5060:5060/tcp"
+      - "5061:5061/tcp"
+      # RTP media (the actual audio stream) - Asterisk needs a wide
+      # port range open for call audio
+      - "10000-10100:10000-10100/udp"
+      # Asterisk Manager Interface (AMI) - this is how our Python
+      # script will tell Asterisk "call this number, play this file"
+      - "5038:5038/tcp"
+    volumes:
+      # CONFIRMED REAL BUG (2026-08-05): mounting the whole ./config
+      # folder over /etc/asterisk wiped out Asterisk's own required
+      # baseline files (modules.conf, logger.conf, asterisk.conf) that
+      # ship inside the image - Asterisk crashed on boot ("Module
+      # initialization failed. ASTERISK EXITING!") because those were
+      # simply gone. Mounting only our 3 specific files individually
+      # leaves the image's own defaults for everything else intact.
+      - ./config/pjsip.conf:/etc/asterisk/pjsip.conf
+      - ./config/extensions.conf:/etc/asterisk/extensions.conf
+      - ./config/manager.conf:/etc/asterisk/manager.conf
+      - ./audio:/var/lib/asterisk/sounds/custom

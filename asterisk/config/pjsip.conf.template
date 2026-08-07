@@ -1,0 +1,59 @@
+; Zebl - Asterisk PJSIP config (test/prototype)
+;
+; GENERATED FILE - do not hand-edit config/pjsip.conf directly.
+; This is the template it's generated from. Edit THIS file for
+; structural changes, and ../.env for credential changes, then run
+; generate_pjsip_conf.py to regenerate config/pjsip.conf.
+;
+; CONFIRMED (2026-08-05) from a real successful registration log
+; captured directly from VoIP Office's own client - server/port/
+; transport/username format all verified correct this way.
+
+[transport-tls]
+type=transport
+protocol=tls
+bind=0.0.0.0:{{VOIP_OFFICE_PORT}}
+cert_file=/etc/asterisk/keys/zebl.crt
+priv_key_file=/etc/asterisk/keys/zebl.key
+method=tlsv1_2
+verify_server=no
+verify_client=no
+
+; ============================================================
+; TRUNK - this is what connects Asterisk to VoIP Office's SIP server,
+; the same account your desktop softphone app uses.
+; ============================================================
+
+[voipoffice-auth]
+type=auth
+auth_type=userpass
+username={{VOIP_OFFICE_USERNAME}}
+password={{VOIP_OFFICE_PASSWORD}}
+
+[voipoffice-aor]
+type=aor
+contact=sips:{{VOIP_OFFICE_USERNAME_URI}}@{{VOIP_OFFICE_SERVER}}:{{VOIP_OFFICE_PORT}}
+
+[voipoffice-registration]
+type=registration
+outbound_auth=voipoffice-auth
+server_uri=sips:{{VOIP_OFFICE_SERVER}}:{{VOIP_OFFICE_PORT}}
+client_uri=sips:{{VOIP_OFFICE_USERNAME_URI}}@{{VOIP_OFFICE_SERVER}}:{{VOIP_OFFICE_PORT}}
+retry_interval=60
+transport=transport-tls
+
+[voipoffice-endpoint]
+type=endpoint
+transport=transport-tls
+context=outbound-calls
+disallow=all
+allow=ulaw
+allow=alaw
+outbound_auth=voipoffice-auth
+aors=voipoffice-aor
+from_user={{VOIP_OFFICE_USERNAME_URI}}
+
+[voipoffice-identify]
+type=identify
+endpoint=voipoffice-endpoint
+match={{VOIP_OFFICE_SERVER}}
