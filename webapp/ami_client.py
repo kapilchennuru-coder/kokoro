@@ -77,12 +77,12 @@ def place_call(destination_number: str, audio_filename_no_extension: str) -> dic
     actually happened, for storing against the patient's call record.
     """
     if not AMI_USER or not AMI_SECRET:
-        return {"status": "error", "detail": "AMI credentials not configured"}
+        return {"status": "error", "detail": "Unable to start this campaign. Please try again later."}
 
     try:
         sock = socket.create_connection((AMI_HOST, AMI_PORT), timeout=10)
-    except OSError as exc:
-        return {"status": "error", "detail": f"could not reach Asterisk AMI: {exc}"}
+    except OSError:
+        return {"status": "error", "detail": "Unable to start this campaign. Please try again later."}
 
     try:
         sock.recv(1024)  # banner
@@ -96,7 +96,7 @@ def place_call(destination_number: str, audio_filename_no_extension: str) -> dic
         time.sleep(0.3)
         login_resp = _recv_all(sock, timeout=5)
         if "Success" not in login_resp:
-            return {"status": "error", "detail": "AMI login failed", "raw": login_resp}
+            return {"status": "error", "detail": "Unable to start this campaign. Please try again later.", "raw": login_resp}
 
         action_id = f"call-{int(time.time() * 1000)}"
         originate_msg = (
@@ -117,7 +117,7 @@ def place_call(destination_number: str, audio_filename_no_extension: str) -> dic
         response = _parse_field(raw, "Response")
 
         if response and response.lower() == "error":
-            return {"status": "error", "detail": _parse_field(raw, "Message") or "originate failed", "raw": raw}
+            return {"status": "error", "detail": "Unable to complete this request.", "raw": raw}
 
         status = REASON_TEXT.get(reason, "unknown")
         return {"status": status, "reason_code": reason, "raw": raw}
