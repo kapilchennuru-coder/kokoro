@@ -18,13 +18,6 @@ REQUIRED_FIELDS = ("first_name", "last_name", "email", "company_name", "country"
 
 
 def submit(payload: dict, ip_address: str) -> dict:
-    # Honeypot: a real visitor never fills this hidden field in; a bot
-    # filling every input on the page will. Fail silently-ish (still a
-    # ValueError, but a generic one) rather than confirming to the bot
-    # which specific check tripped.
-    if (payload.get("website_hp") or "").strip():
-        raise ValueError("Unable to submit your request. Please try again.")
-
     for field in REQUIRED_FIELDS:
         if not str(payload.get(field) or "").strip():
             raise ValueError(f"{field.replace('_', ' ').title()} is required.")
