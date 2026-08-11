@@ -346,6 +346,23 @@ def api_cancel_import():
 
 # --------------- Demo requests (public marketing site) ---------------
 
+# The marketing site (website/, deployed separately e.g. on Netlify) is a
+# different origin from this API, so the browser enforces CORS on the one
+# public write route it calls. Scoped tightly to just POST/OPTIONS on this
+# exact path - the authenticated GET/PUT admin routes below are NOT covered
+# by this, so they stay same-origin only, same as the rest of the app.
+PUBLIC_SITE_ORIGIN = os.environ.get("PUBLIC_SITE_ORIGIN", "https://outreach1.netlify.app")
+
+
+@app.after_request
+def add_demo_request_cors_headers(response):
+    if request.path == "/api/demo-requests" and request.method in ("POST", "OPTIONS"):
+        response.headers["Access-Control-Allow-Origin"] = PUBLIC_SITE_ORIGIN
+        response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    return response
+
+
 @app.post("/api/demo-requests")
 def api_create_demo_request():
     """Public, unauthenticated - the marketing site's Request a Demo form
