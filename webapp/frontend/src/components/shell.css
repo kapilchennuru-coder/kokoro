@@ -25,16 +25,9 @@
 }
 
 .brand-mark {
-  width: 34px;
-  height: 34px;
-  border-radius: 9px;
-  background: linear-gradient(145deg, #14b8a6, #0f766e);
   display: grid;
   place-items: center;
-  font-weight: 700;
-  color: white;
-  font-family: var(--font-display);
-  box-shadow: 0 8px 20px rgba(15, 118, 110, 0.35);
+  color: #14b8a6;
 }
 
 .brand-text {
@@ -58,6 +51,15 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
+}
+
+.nav-section-label {
+  margin: 16px 12px 4px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #64748b;
 }
 
 .nav a {
@@ -349,12 +351,75 @@
 .login-page {
   min-height: 100%;
   display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+}
+
+.login-brand {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 28px;
+  padding: 56px;
+  overflow: hidden;
+  background:
+    radial-gradient(650px 500px at 15% 15%, rgba(20, 184, 166, 0.22), transparent 60%),
+    radial-gradient(500px 420px at 100% 100%, rgba(20, 184, 166, 0.14), transparent 55%),
+    #0b1220;
+  color: #f1f5f9;
+}
+
+.login-brand .watermark {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 780px;
+  height: 780px;
+  transform: translate(-38%, -46%);
+  color: #14b8a6;
+  opacity: 0.07;
+  pointer-events: none;
+}
+
+.login-brand-content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  max-width: 440px;
+}
+
+.login-brand .wordmark {
+  font-family: var(--font-display);
+  font-size: 2rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.login-brand .tagline {
+  font-size: 1.05rem;
+  line-height: 1.5;
+  color: #b7c4d6;
+  margin: 0;
+}
+
+.login-brand .motto {
+  margin: 4px 0 0;
+  padding-top: 20px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: #5eead4;
+}
+
+.login-form-panel {
+  display: grid;
   place-items: center;
   padding: 24px;
-  background:
-    radial-gradient(900px 500px at 20% 0%, rgba(15, 118, 110, 0.12), transparent 55%),
-    radial-gradient(700px 400px at 90% 100%, rgba(15, 23, 42, 0.06), transparent 50%),
-    var(--bg);
+  background: var(--bg);
 }
 
 .login-card {
@@ -364,6 +429,15 @@
   border: 1px solid var(--border);
   border-radius: 16px;
   box-shadow: var(--shadow);
+}
+
+@media (max-width: 900px) {
+  .login-page {
+    grid-template-columns: 1fr;
+  }
+  .login-brand {
+    display: none;
+  }
 }
 
 .login-card h1 {

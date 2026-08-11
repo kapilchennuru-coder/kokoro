@@ -1,58 +1,26 @@
-"""Telephony health checks for Asterisk AMI — never pretend calls succeed."""
+"""Telephony health checks for Twilio Voice - never pretend calls succeed."""
 
 from __future__ import annotations
 
 import os
-import socket
 
-from dotenv import dotenv_values
-
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-ASTERISK_ENV_PATH = os.path.join(BASE_DIR, "..", "asterisk", ".env")
+import db
+from services import twilio_client
 
 
-def check_telephony() -> dict:
-    env = dotenv_values(ASTERISK_ENV_PATH)
-    ami_user = env.get("AMI_USERNAME") or ""
-    ami_secret = env.get("AMI_SECRET") or ""
-    host = os.environ.get("AMI_HOST", "localhost")
-    port = int(os.environ.get("AMI_PORT", "5038"))
+def resolve_mode(organization_id: int | None = None) -> str:
+    """The Twilio SID/token pair is global (env vars), but which pair is
+    active (test vs live) is a per-organization Settings choice. Public/
+    unauthenticated callers (like /api/health) have no organization_id, so
+    they fall back to the env-var default."""
+    if organization_id is not None:
+        return db.get_settings(organization_id).get("twilio_mode", "test")
+    return os.environ.get("TWILIO_MODE", "test")
 
-    if not ami_user or not ami_secret:
-        return {
-            "available": False,
-            "configured": False,
-            "reachable": False,
-            "detail": "Calling is not available right now. Please try again later.",
-            "host": host,
-            "port": port,
-        }
 
-    reachable = False
-    detail = "Ready"
-    try:
-        with socket.create_connection((host, port), timeout=2) as sock:
-            banner = sock.recv(1024).decode("utf-8", errors="ignore")
-            reachable = "Asterisk" in banner or "Manager" in banner or bool(banner)
-            if not reachable:
-                detail = "Calling is not available right now. Please try again later."
-            else:
-                detail = "Ready"
-    except OSError:
-        return {
-            "available": False,
-            "configured": True,
-            "reachable": False,
-            "detail": "Calling is not available right now. Please try again later.",
-            "host": host,
-            "port": port,
-        }
-
-    return {
-        "available": reachable,
-        "configured": True,
-        "reachable": reachable,
-        "detail": detail,
-        "host": host,
-        "port": port,
-    }
+def check_telephony(organization_id: int | None = None) -> dict:
+    mode = resolve_mode(organization_id)
+    result = twilio_client.check_account(mode)
+    result["mode"] = mode
+    result["from_number"] = twilio_client.from_number() or None
+    return result

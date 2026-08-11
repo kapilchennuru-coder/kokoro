@@ -105,21 +105,28 @@ def validate_patient(patient: dict) -> tuple[str, list[str]]:
     return ("valid" if not errors else "invalid"), errors
 
 
-def mark_duplicates(patients: list[dict]) -> list[dict]:
+def mark_duplicates(patients: list[dict], existing_phones: set[str] | None = None) -> list[dict]:
     seen: set[str] = set()
+    existing_phones = existing_phones or set()
     for p in patients:
         phone = (p.get("phone") or "").strip()
         if not phone or p.get("validation_status") == "invalid":
             continue
         if phone in seen:
-            p["validation_status"] = "duplicate"
-            errors = list(p.get("validation_errors") or [])
-            if "Duplicate patient" not in errors:
-                errors.append("Duplicate patient")
-            p["validation_errors"] = errors
+            _flag_duplicate(p, "Duplicate patient")
+        elif phone in existing_phones:
+            _flag_duplicate(p, "Already in your patient list")
         else:
             seen.add(phone)
     return patients
+
+
+def _flag_duplicate(patient: dict, message: str) -> None:
+    patient["validation_status"] = "duplicate"
+    errors = list(patient.get("validation_errors") or [])
+    if message not in errors:
+        errors.append(message)
+    patient["validation_errors"] = errors
 
 
 def _read_dataframe(path: str) -> pd.DataFrame:
@@ -155,7 +162,7 @@ def parse_spreadsheet(path: str) -> dict:
     }
 
 
-def apply_mapping(path: str, mapping: dict[str, str | None]) -> list[dict]:
+def apply_mapping(path: str, mapping: dict[str, str | None], existing_phones: set[str] | None = None) -> list[dict]:
     df = _read_dataframe(path)
     if len(df) == 0:
         raise ValueError("This file doesn't contain any records.")
@@ -177,4 +184,4 @@ def apply_mapping(path: str, mapping: dict[str, str | None]) -> list[dict]:
         patient["validation_errors"] = errors
         patients.append(patient)
 
-    return mark_duplicates(patients)
+    return mark_duplicates(patients, existing_phones)

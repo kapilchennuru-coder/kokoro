@@ -1,7 +1,75 @@
+export type Role = 'SUPER_ADMIN' | 'ADMIN' | 'MANAGER' | 'AGENT' | 'VIEWER'
+
 export type User = {
   id: number
   username: string
   client_name: string
+  email?: string
+  role?: Role
+}
+
+export type AdminUser = {
+  id: number
+  username: string
+  email?: string
+  first_name?: string
+  last_name?: string
+  client_name: string
+  role: Role
+  status: 'active' | 'inactive'
+  last_login?: string
+  created_at: string
+  updated_at?: string
+}
+
+export type LoginHistoryEntry = {
+  id: number
+  user_id?: number
+  username: string
+  success: 0 | 1
+  failure_reason?: string
+  ip_address?: string
+  user_agent?: string
+  login_at: string
+  logout_at?: string
+}
+
+export type AuditLogEntry = {
+  id: number
+  actor_id?: number
+  actor_username?: string
+  action: string
+  entity?: string
+  entity_id?: number
+  metadata: Record<string, unknown>
+  ip_address?: string
+  created_at: string
+}
+
+export type DemoRequest = {
+  id: number
+  first_name: string
+  last_name: string
+  email: string
+  company_name: string
+  job_title?: string
+  country: string
+  phone: string
+  website?: string
+  industry: string
+  company_size?: string
+  monthly_call_volume?: string
+  message?: string
+  status: 'NEW' | 'CONTACTED' | 'QUALIFIED' | 'DEMO_SCHEDULED' | 'CLOSED'
+  notes?: string
+  created_at: string
+}
+
+export type HealthStatus = {
+  status: 'healthy' | 'warning' | 'critical'
+  components: Record<string, 'healthy' | 'warning' | 'critical'>
+  telephony: Health
+  tts: Health
 }
 
 export type Patient = {
@@ -16,6 +84,11 @@ export type Patient = {
   validation_errors?: string[]
   calling_status?: string
   last_called_at?: string
+  last_call_status?: string
+  last_call_outcome?: string
+  last_call_duration_sec?: number
+  last_call_at?: string
+  attempt_count?: number
 }
 
 /** @deprecated use Patient */
@@ -67,6 +140,8 @@ export type Campaign = {
   completed_calls: number
   successful_calls: number
   no_answer_calls: number
+  busy_calls?: number
+  simulated_calls?: number
   failed_calls: number
   in_progress_calls: number
   current_contact_id?: number
@@ -106,6 +181,8 @@ export type Call = {
   balance?: number
   balance_display?: string
   hospital?: string
+  provider_call_sid?: string
+  attempt_number?: number
 }
 
 export type TranscriptEntry = {

@@ -6,13 +6,23 @@ import os
 
 import numpy as np
 import soundfile as sf
+from scipy.signal import resample_poly
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-AUDIO_DIR = os.path.join(BASE_DIR, "..", "audio")  # same folder Asterisk's audio/ maps to
+AUDIO_DIR = os.path.join(BASE_DIR, "..", "audio")  # served publicly via GET /api/audio/<call_id>.wav for Twilio's <Play>
 
 LANG_CODE = "a"
 VOICE_NAME = "af_jessica"
 SAMPLE_RATE = 24000
+
+# Phone calls only carry ~8kHz of audio bandwidth (standard narrowband
+# telephony) - serving Kokoro's native 24kHz WAV wastes 3x the bytes for
+# resolution the call can't use anyway. Downsampling before writing cuts the
+# file Twilio has to fetch over the public tunnel by ~3x, which was adding
+# several seconds of dead air after pickup while <Play> waited on the
+# download (self-hosted audio, not Twilio-hosted - the fetch time is ours to
+# control).
+TELEPHONY_SAMPLE_RATE = 8000
 
 DEFAULT_OPENING = (
     "Hello {name}, this is a courtesy call from {hospital}. "
@@ -62,7 +72,7 @@ def generate_call_audio(
     voice_name: str = VOICE_NAME,
     speed: float = 1.0,
 ) -> str:
-    """Generate WAV via Kokoro. Returns filename without extension (for Asterisk)."""
+    """Generate WAV via Kokoro. Returns filename without extension (for /api/audio serving)."""
     os.makedirs(AUDIO_DIR, exist_ok=True)
     pipeline = _get_pipeline()
 
@@ -80,9 +90,13 @@ def generate_call_audio(
         raise RuntimeError("Unable to process this request right now.")
     audio = audio_chunks[0] if len(audio_chunks) == 1 else np.concatenate(audio_chunks)
 
+    # 24000 / 8000 = 3 exactly, so a simple 1:3 polyphase downsample applies
+    # cleanly with no fractional-rate resampling error.
+    telephony_audio = resample_poly(audio, up=1, down=SAMPLE_RATE // TELEPHONY_SAMPLE_RATE)
+
     filename_no_ext = f"contact_{contact_id}_voice"
     output_path = os.path.join(AUDIO_DIR, f"{filename_no_ext}.wav")
-    sf.write(output_path, audio, SAMPLE_RATE)
+    sf.write(output_path, telephony_audio, TELEPHONY_SAMPLE_RATE)
     return filename_no_ext
 
 

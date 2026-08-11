@@ -94,6 +94,11 @@ export function StatusBadge({ status }: { status: string }) {
     listening: 'badge badge-info',
     idle: 'badge',
     processing: 'badge badge-info',
+    active: 'badge badge-success',
+    inactive: 'badge',
+    simulated: 'badge badge-info',
+    invalid_number: 'badge badge-danger',
+    stopped: 'badge',
   }
   return <span className={map[status] || 'badge'}>{statusLabel(status)}</span>
 }

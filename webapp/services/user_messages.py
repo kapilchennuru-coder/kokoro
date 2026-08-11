@@ -11,8 +11,8 @@ def sanitize_public_detail(detail: str | None) -> str:
         return USER_GENERIC
     text = detail.lower()
     technical = (
-        "ami", "asterisk", "kokoro", "tts", "python", "pipeline", "inference",
-        "voip", "pjsip", "socket", "traceback", "module named", ".env",
+        "twilio", "kokoro", "tts", "python", "pipeline", "inference",
+        "socket", "traceback", "module named", ".env",
     )
     if any(t in text for t in technical):
         if "credential" in text or "reach" in text or "available" in text or "connect" in text:

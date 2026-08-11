@@ -26,6 +26,7 @@ def _summarize(patients: list[dict]) -> dict:
 
 def stash_upload(user_id: int, path: str, filename: str) -> dict:
     """Parse file into temporary pending state. Does NOT save patients."""
+    organization_id = db.resolve_organization_id(user_id)
     previous = _pending_uploads.pop(user_id, None)
     if previous and previous.get("path") and previous["path"] != path:
         try:
@@ -73,7 +74,8 @@ def stash_upload(user_id: int, path: str, filename: str) -> dict:
 
     # When columns are detected, return full preview in the same response
     if not parsed["requires_mapping"]:
-        patients = excel_parser.apply_mapping(path, mapping)
+        existing_phones = db.get_existing_phones(organization_id)
+        patients = excel_parser.apply_mapping(path, mapping, existing_phones)
         summary = _summarize(patients)
         result.update(summary)
         result["patients"] = patients
@@ -109,7 +111,9 @@ def preview_with_mapping(user_id: int, mapping: dict) -> dict:
     if not all(mapping.get(k) for k in required):
         raise ValueError("We couldn't identify the required fields in this file.")
 
-    patients = excel_parser.apply_mapping(pending["path"], mapping)
+    organization_id = db.resolve_organization_id(user_id)
+    existing_phones = db.get_existing_phones(organization_id)
+    patients = excel_parser.apply_mapping(pending["path"], mapping, existing_phones)
     pending["mapping"] = mapping
     summary = _summarize(patients)
     return {
@@ -131,7 +135,9 @@ def confirm_import(user_id: int, mapping: dict, list_name: str | None = None) ->
     if not all(mapping.get(k) for k in required):
         raise ValueError("We couldn't identify the required fields in this file.")
 
-    patients = excel_parser.apply_mapping(pending["path"], mapping)
+    organization_id = db.resolve_organization_id(user_id)
+    existing_phones = db.get_existing_phones(organization_id)
+    patients = excel_parser.apply_mapping(pending["path"], mapping, existing_phones)
     summary = _summarize(patients)
     to_import = [c for c in patients if c["validation_status"] == "valid"]
     if not to_import:
@@ -139,16 +145,17 @@ def confirm_import(user_id: int, mapping: dict, list_name: str | None = None) ->
 
     name = list_name or os.path.splitext(pending["filename"])[0]
     list_id = db.create_contact_list(
-        user_id=user_id,
+        organization_id=organization_id,
         name=name,
         filename=pending["filename"],
         mapping=mapping,
         row_count=summary["row_count"],
         valid_count=summary["valid_count"],
         invalid_count=summary["attention_count"],
+        created_by=user_id,
     )
-    db.insert_contacts(user_id, list_id, to_import)
-    db.add_notification(user_id, f"{len(to_import)} patients are ready", "success")
+    db.insert_contacts(organization_id, list_id, to_import)
+    db.add_notification(organization_id, user_id, f"{len(to_import)} patients are ready", "success")
 
     path = pending.get("path")
     _pending_uploads.pop(user_id, None)
@@ -168,21 +175,49 @@ def confirm_import(user_id: int, mapping: dict, list_name: str | None = None) ->
     }
 
 
+def add_contact(user_id: int, data: dict) -> dict:
+    """Add a single patient manually (no Excel file involved)."""
+    organization_id = db.resolve_organization_id(user_id)
+    balance_num, balance_display = excel_parser.parse_balance(data.get("balance"))
+    patient = {
+        "name": (data.get("name") or "").strip(),
+        "phone": excel_parser.normalize_phone((data.get("phone") or "").strip()),
+        "balance": balance_num,
+        "balance_display": balance_display,
+        "hospital": (data.get("hospital") or "").strip(),
+    }
+    status, errors = excel_parser.validate_patient(patient)
+    if status != "valid":
+        raise ValueError(errors[0] if errors else "Please check the patient details.")
+
+    if patient["phone"] in db.get_existing_phones(organization_id):
+        raise ValueError("A patient with this phone number already exists.")
+
+    patient["validation_status"] = "valid"
+    patient["validation_errors"] = []
+    ids = db.insert_contacts(organization_id, None, [patient])
+    return db.get_contact(organization_id, ids[0])
+
+
 def list_contacts(user_id: int, **filters):
-    return db.get_contacts(user_id, **filters)
+    return db.get_contacts(db.resolve_organization_id(user_id), **filters)
 
 
 def get_contact(user_id: int, contact_id: int):
-    return db.get_contact(user_id, contact_id)
+    return db.get_contact(db.resolve_organization_id(user_id), contact_id)
 
 
 def update_contact(user_id: int, contact_id: int, data: dict):
-    return db.update_contact(user_id, contact_id, data)
+    return db.update_contact(db.resolve_organization_id(user_id), contact_id, data)
 
 
 def delete_contact(user_id: int, contact_id: int) -> bool:
-    return db.delete_contact(user_id, contact_id)
+    return db.delete_contact(db.resolve_organization_id(user_id), contact_id)
+
+
+def delete_contacts(user_id: int, contact_ids: list[int]) -> int:
+    return db.delete_contacts(db.resolve_organization_id(user_id), contact_ids)
 
 
 def list_lists(user_id: int):
-    return db.get_contact_lists(user_id)
+    return db.get_contact_lists(db.resolve_organization_id(user_id))

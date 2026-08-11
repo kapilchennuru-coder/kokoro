@@ -5,6 +5,7 @@ import type { User } from '../types'
 type AuthCtx = {
   user: User | null
   loading: boolean
+  isAdmin: boolean
   login: (username: string, password: string) => Promise<void>
   logout: () => Promise<void>
   refresh: () => Promise<void>
@@ -41,9 +42,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null)
   }, [])
 
+  const isAdmin = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN'
+
   const value = useMemo(
-    () => ({ user, loading, login, logout, refresh }),
-    [user, loading, login, logout, refresh],
+    () => ({ user, loading, isAdmin, login, logout, refresh }),
+    [user, loading, isAdmin, login, logout, refresh],
   )
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>

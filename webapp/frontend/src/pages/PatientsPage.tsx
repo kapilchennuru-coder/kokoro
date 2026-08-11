@@ -13,6 +13,13 @@ function statusDisplay(status?: string) {
   return status
 }
 
+function formatDuration(sec: number | undefined): string {
+  if (!sec) return '—'
+  const m = Math.floor(sec / 60)
+  const s = Math.floor(sec % 60)
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+}
+
 export function PatientsPage() {
   const { push } = useToast()
   const [items, setItems] = useState<Patient[]>([])
@@ -23,6 +30,8 @@ export function PatientsPage() {
   const [error, setError] = useState<string | null>(null)
   const [editing, setEditing] = useState<Patient | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<Patient | null>(null)
+  const [selected, setSelected] = useState<Set<number>>(new Set())
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [form, setForm] = useState({ name: '', phone: '', balance: '', hospital: '' })
 
@@ -42,7 +51,39 @@ export function PatientsPage() {
 
   useEffect(() => {
     void load()
+    setSelected(new Set())
   }, [load])
+
+  const toggleSelected = (id: number) => {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const toggleSelectAll = () => {
+    setSelected((prev) =>
+      prev.size === items.length ? new Set() : new Set(items.map((p) => p.id).filter((id): id is number => id != null)),
+    )
+  }
+
+  const confirmBulkDelete = async () => {
+    setBusy(true)
+    try {
+      const ids = Array.from(selected)
+      await api.deleteContacts(ids)
+      push(`${ids.length} patient${ids.length === 1 ? '' : 's'} removed`, 'success')
+      setSelected(new Set())
+      setBulkDeleteOpen(false)
+      await load()
+    } catch (e) {
+      push(friendlyError(e instanceof Error ? e.message : 'Unable to delete selected patients'), 'error')
+    } finally {
+      setBusy(false)
+    }
+  }
 
   const openEdit = (p: Patient) => {
     setEditing(p)
@@ -113,6 +154,17 @@ export function PatientsPage() {
             setPage(1)
           }}
         />
+        {selected.size > 0 ? (
+          <>
+            <div className="spacer" />
+            <span className="muted" style={{ fontSize: '0.85rem' }}>
+              {selected.size} selected
+            </span>
+            <button type="button" className="btn btn-danger btn-sm" onClick={() => setBulkDeleteOpen(true)}>
+              Delete selected
+            </button>
+          </>
+        ) : null}
       </div>
 
       {loading ? (
@@ -135,17 +187,37 @@ export function PatientsPage() {
             <table className="data">
               <thead>
                 <tr>
+                  <th style={{ width: 36 }}>
+                    <input
+                      type="checkbox"
+                      checked={items.length > 0 && selected.size === items.length}
+                      onChange={toggleSelectAll}
+                      aria-label="Select all patients"
+                    />
+                  </th>
                   <th>Name</th>
                   <th>Phone</th>
                   <th>Balance</th>
                   <th>Hospital</th>
                   <th>Status</th>
+                  <th>Last Call</th>
+                  <th>Duration</th>
+                  <th>Last Called</th>
+                  <th>Attempts</th>
                   <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {items.map((p) => (
                   <tr key={p.id}>
+                    <td>
+                      <input
+                        type="checkbox"
+                        checked={p.id != null && selected.has(p.id)}
+                        onChange={() => p.id != null && toggleSelected(p.id)}
+                        aria-label={`Select ${p.name}`}
+                      />
+                    </td>
                     <td>{p.name}</td>
                     <td>{p.phone || '—'}</td>
                     <td>{p.balance_display || '—'}</td>
@@ -153,6 +225,10 @@ export function PatientsPage() {
                     <td>
                       <StatusBadge status={statusDisplay(p.calling_status)} />
                     </td>
+                    <td>{p.last_call_outcome ? <StatusBadge status={p.last_call_outcome} /> : '—'}</td>
+                    <td className="secondary">{formatDuration(p.last_call_duration_sec)}</td>
+                    <td className="secondary">{p.last_call_at ? new Date(p.last_call_at).toLocaleString() : '—'}</td>
+                    <td className="secondary">{p.attempt_count || 0}</td>
                     <td>
                       <div style={{ display: 'flex', gap: 6 }}>
                         <button type="button" className="btn btn-ghost btn-sm" onClick={() => openEdit(p)}>
@@ -213,9 +289,21 @@ export function PatientsPage() {
         title="Delete patient?"
         message="This patient will be removed from the list."
         confirmLabel="Delete"
+        busyLabel="Deleting…"
         busy={busy}
         onCancel={() => setDeleteTarget(null)}
         onConfirm={() => void confirmDelete()}
+      />
+
+      <ConfirmDialog
+        open={bulkDeleteOpen}
+        title={`Delete ${selected.size} patient${selected.size === 1 ? '' : 's'}?`}
+        message="These patients will be removed from the list. This can't be undone."
+        confirmLabel="Delete selected"
+        busyLabel="Deleting…"
+        busy={busy}
+        onCancel={() => setBulkDeleteOpen(false)}
+        onConfirm={() => void confirmBulkDelete()}
       />
     </div>
   )

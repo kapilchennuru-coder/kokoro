@@ -301,6 +301,21 @@ table.data tr:last-child td {
   color: var(--text-secondary);
 }
 
+.neon-r {
+  color: #2dd4bf;
+  text-shadow: 0 0 5px rgba(45, 212, 191, 0.9), 0 0 14px rgba(45, 212, 191, 0.55), 0 0 26px rgba(45, 212, 191, 0.3);
+}
+
+.brand-badge {
+  display: inline-flex;
+  align-items: center;
+  background: #0b1220;
+  color: #f2f6fb;
+  padding: 4px 10px 4px 8px;
+  border-radius: 7px;
+  line-height: 1;
+}
+
 @keyframes fadeUp {
   from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: translateY(0); }

@@ -70,6 +70,13 @@ webapp/app.db
 webapp/uploads/
 webapp/frontend/node_modules/
 
+# Generated call audio (Kokoro TTS output from real/test calls - never commit)
+audio/
+
+# website/ is its own separate git repo (pushed to github.com/kapilchennuru-coder/website),
+# nested inside this working tree but intentionally untracked here.
+website/
+
 # Scrapy stuff:
 .scrapy
 

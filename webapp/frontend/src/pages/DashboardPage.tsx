@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import { ColumnMapper } from '../components/ColumnMapper'
@@ -7,7 +7,7 @@ import { FileUpload } from '../components/FileUpload'
 import { EmptyState, ErrorState, LoadingState, MetricCard, StatusBadge } from '../components/ui'
 import { useToast } from '../context/ToastContext'
 import { friendlyError } from '../lib/labels'
-import type { Call, Mapping, Patient } from '../types'
+import type { Call, Mapping, Patient, Voice } from '../types'
 
 type Step = 'idle' | 'mapping' | 'preview' | 'success'
 
@@ -45,6 +45,17 @@ export function DashboardPage() {
   const [busy, setBusy] = useState(false)
   const [uploadStatus, setUploadStatus] = useState<string | null>(null)
   const [confirmOpen, setConfirmOpen] = useState(false)
+  const [addOpen, setAddOpen] = useState(false)
+  const [addBusy, setAddBusy] = useState(false)
+  const [addForm, setAddForm] = useState({ name: '', phone: '', balance: '', hospital: '' })
+  const [startConfirmOpen, setStartConfirmOpen] = useState(false)
+  const [startSummary, setStartSummary] = useState<{
+    voiceLabel: string
+    callingWindow: string
+    retries: string
+    mode: string
+    outsideWindowWarning: string | null
+  } | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -66,6 +77,26 @@ export function DashboardPage() {
   useEffect(() => {
     void load()
   }, [load])
+
+  const addField = (key: keyof typeof addForm, value: string) => {
+    setAddForm((f) => ({ ...f, [key]: value }))
+  }
+
+  const submitAddPatient = async (e: FormEvent) => {
+    e.preventDefault()
+    setAddBusy(true)
+    try {
+      await api.createContact(addForm)
+      push('Patient added', 'success')
+      setAddForm({ name: '', phone: '', balance: '', hospital: '' })
+      setAddOpen(false)
+      await load()
+    } catch (err) {
+      push(friendlyError(err instanceof Error ? err.message : 'Unable to add patient'), 'error')
+    } finally {
+      setAddBusy(false)
+    }
+  }
 
   const resetWizard = () => {
     setStep('idle')
@@ -177,11 +208,65 @@ export function DashboardPage() {
     }
   }
 
+  const openStartConfirm = async () => {
+    setBusy(true)
+    try {
+      const [settingsRes, voicesRes] = await Promise.all([api.settings(), api.voices()])
+      const s = settingsRes.settings
+      const voice = (voicesRes.voices as Voice[]).find((v) => v.id === s.voice_id)
+      const callingWindow =
+        s.calling_hours_enabled === 'true'
+          ? `${s.calling_hours_start || '09:00'} – ${s.calling_hours_end || '18:00'} (${s.timezone || 'local time'})`
+          : 'No restriction'
+
+      let outsideWindowWarning: string | null = null
+      if (s.calling_hours_enabled === 'true' && s.timezone) {
+        try {
+          const fmt = new Intl.DateTimeFormat('en-US', {
+            timeZone: s.timezone,
+            hour12: false,
+            hour: '2-digit',
+            minute: '2-digit',
+            weekday: 'short',
+          })
+          const parts = Object.fromEntries(fmt.formatToParts(new Date()).map((p) => [p.type, p.value]))
+          const nowMinutes = Number(parts.hour) * 60 + Number(parts.minute)
+          const dayMap: Record<string, string> = { Mon: '1', Tue: '2', Wed: '3', Thu: '4', Fri: '5', Sat: '6', Sun: '7' }
+          const todayCode = dayMap[parts.weekday || ''] || ''
+          const days = (s.calling_days || '1,2,3,4,5').split(',')
+          const [startH, startM] = (s.calling_hours_start || '09:00').split(':').map(Number)
+          const [endH, endM] = (s.calling_hours_end || '18:00').split(':').map(Number)
+          const withinWindow =
+            days.includes(todayCode) && nowMinutes >= startH * 60 + startM && nowMinutes < endH * 60 + endM
+          if (!withinWindow) {
+            outsideWindowWarning = `It's currently outside the calling window (${parts.weekday} ${parts.hour}:${parts.minute} in ${s.timezone}) — the campaign will start but wait until the window opens before dialing anyone.`
+          }
+        } catch {
+          /* unknown/invalid timezone string - skip the proactive check, backend still enforces it */
+        }
+      }
+
+      setStartSummary({
+        voiceLabel: voice?.label || s.voice_id || 'Default voice',
+        callingWindow,
+        retries: `${s.retry_max_attempts ?? '2'} max attempts`,
+        mode: s.twilio_mode === 'live' ? 'LIVE — real calls will be placed' : 'TEST — simulated, no real calls',
+        outsideWindowWarning,
+      })
+      setStartConfirmOpen(true)
+    } catch (e) {
+      push(friendlyError(e instanceof Error ? e.message : 'Unable to load calling settings'), 'error')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const startCalling = async () => {
     setBusy(true)
     try {
       const res = await api.startCalling()
       push('Calling started', 'success')
+      setStartConfirmOpen(false)
       navigate(`/calls/live/${res.campaign.id}`)
     } catch (e) {
       push(friendlyError(e instanceof Error ? e.message : 'Unable to start calling'), 'error')
@@ -240,7 +325,7 @@ export function DashboardPage() {
               type="button"
               className="btn btn-primary"
               disabled={busy || kpis.contacts_ready < 1}
-              onClick={() => void startCalling()}
+              onClick={() => void openStartConfirm()}
             >
               Start Calling
             </button>
@@ -274,6 +359,77 @@ export function DashboardPage() {
             </button>
           </div>
           <FileUpload onFile={onFile} disabled={busy} statusMessage={uploadStatus} />
+
+          <div style={{ marginTop: 18, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
+            {!addOpen ? (
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setAddOpen(true)}>
+                + Add one patient manually
+              </button>
+            ) : (
+              <form onSubmit={(e) => void submitAddPatient(e)}>
+                <div className="toolbar" style={{ marginBottom: 12 }}>
+                  <strong style={{ fontSize: '0.9rem' }}>Add a single patient</strong>
+                  <div className="spacer" />
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => {
+                      setAddOpen(false)
+                      setAddForm({ name: '', phone: '', balance: '', hospital: '' })
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
+                  <label className="field">
+                    <span className="label">Name</span>
+                    <input
+                      className="input"
+                      value={addForm.name}
+                      onChange={(e) => addField('name', e.target.value)}
+                      placeholder="Patient name"
+                      required
+                    />
+                  </label>
+                  <label className="field">
+                    <span className="label">Phone Number</span>
+                    <input
+                      className="input"
+                      value={addForm.phone}
+                      onChange={(e) => addField('phone', e.target.value)}
+                      placeholder="+1 555 123 4567"
+                      required
+                    />
+                  </label>
+                  <label className="field">
+                    <span className="label">Balance</span>
+                    <input
+                      className="input"
+                      value={addForm.balance}
+                      onChange={(e) => addField('balance', e.target.value)}
+                      placeholder="250.00"
+                      inputMode="decimal"
+                      required
+                    />
+                  </label>
+                  <label className="field">
+                    <span className="label">Hospital</span>
+                    <input
+                      className="input"
+                      value={addForm.hospital}
+                      onChange={(e) => addField('hospital', e.target.value)}
+                      placeholder="Hospital / facility name"
+                      required
+                    />
+                  </label>
+                </div>
+                <button type="submit" className="btn btn-primary btn-sm" disabled={addBusy} style={{ marginTop: 14 }}>
+                  {addBusy ? 'Adding…' : 'Add Patient'}
+                </button>
+              </form>
+            )}
+          </div>
         </section>
       ) : null}
 
@@ -459,6 +615,56 @@ export function DashboardPage() {
         busy={busy}
         onCancel={() => setConfirmOpen(false)}
         onConfirm={() => void runImport()}
+      />
+
+      <ConfirmDialog
+        open={startConfirmOpen}
+        title="Start Campaign?"
+        confirmLabel="Start Calling"
+        busyLabel="Starting…"
+        busy={busy}
+        onCancel={() => setStartConfirmOpen(false)}
+        onConfirm={() => void startCalling()}
+        message={
+          startSummary ? (
+            <div style={{ display: 'grid', gap: 6 }}>
+              <div>
+                <strong>{kpis.contacts_ready}</strong> patient{kpis.contacts_ready === 1 ? '' : 's'} will be called
+              </div>
+              <div>Voice: {startSummary.voiceLabel}</div>
+              <div>Calling window: {startSummary.callingWindow}</div>
+              <div>Retries: {startSummary.retries}</div>
+              <div
+                style={{
+                  marginTop: 8,
+                  padding: '8px 10px',
+                  borderRadius: 8,
+                  fontWeight: 600,
+                  background: startSummary.mode.startsWith('LIVE') ? '#fef2f2' : '#eff6ff',
+                  color: startSummary.mode.startsWith('LIVE') ? 'var(--danger)' : 'var(--info, #2563eb)',
+                }}
+              >
+                {startSummary.mode}
+              </div>
+              {startSummary.outsideWindowWarning ? (
+                <div
+                  style={{
+                    marginTop: 4,
+                    padding: '8px 10px',
+                    borderRadius: 8,
+                    fontSize: '0.85rem',
+                    background: '#fffbeb',
+                    color: '#92400e',
+                  }}
+                >
+                  ⏳ {startSummary.outsideWindowWarning}
+                </div>
+              ) : null}
+            </div>
+          ) : (
+            ''
+          )
+        }
       />
     </div>
   )

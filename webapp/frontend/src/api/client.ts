@@ -42,6 +42,12 @@ export const api = {
 
   contact: (id: number) => request<{ contact: import('../types').Patient }>(`/api/contacts/${id}`),
 
+  createContact: (data: { name: string; phone: string; balance: string | number; hospital: string }) =>
+    request<{ contact: import('../types').Patient }>('/api/contacts', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
   updateContact: (id: number, data: Record<string, unknown>) =>
     request<{ contact: import('../types').Patient }>(`/api/contacts/${id}`, {
       method: 'PUT',
@@ -50,6 +56,12 @@ export const api = {
 
   deleteContact: (id: number) =>
     request<{ deleted: boolean }>(`/api/contacts/${id}`, { method: 'DELETE' }),
+
+  deleteContacts: (ids: number[]) =>
+    request<{ deleted_count: number }>('/api/contacts', {
+      method: 'DELETE',
+      body: JSON.stringify({ ids }),
+    }),
 
   uploadExcel: (file: File) => {
     const fd = new FormData()
@@ -115,7 +127,9 @@ export const api = {
   campaign: (id: number) => request<{ campaign: import('../types').Campaign }>(`/api/campaigns/${id}`),
 
   liveCampaign: (id: number) =>
-    request<{ campaign: import('../types').Campaign }>(`/api/campaigns/${id}/live`),
+    request<{ campaign: import('../types').Campaign; telephony: import('../types').Health & { mode?: string } }>(
+      `/api/campaigns/${id}/live`,
+    ),
 
   startCampaign: (id: number) =>
     request<{ campaign: import('../types').Campaign }>(`/api/campaigns/${id}/start`, { method: 'POST' }),
@@ -158,4 +172,72 @@ export const api = {
     ),
 
   markNotificationsRead: () => request('/api/notifications/read', { method: 'POST' }),
+
+  health: () => request<import('../types').HealthStatus>('/api/health'),
+
+  previewVoice: (voice_id: string, speed: number, text?: string) =>
+    fetch('/api/voices/preview', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ voice_id, speed, text }),
+    }).then(async (res) => {
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({ error: 'Unable to generate a voice preview' }))
+        throw new Error(data.error || 'Unable to generate a voice preview')
+      }
+      return res.blob()
+    }),
+
+  admin: {
+    users: () => request<{ users: import('../types').AdminUser[] }>('/api/admin/users'),
+
+    createUser: (payload: { username: string; password: string; role: string; email?: string }) =>
+      request<{ user: import('../types').AdminUser }>('/api/admin/users', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      }),
+
+    updateUser: (id: number, payload: Record<string, string>) =>
+      request<{ user: import('../types').AdminUser }>(`/api/admin/users/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      }),
+
+    resetPassword: (id: number, password: string) =>
+      request<{ reset: boolean }>(`/api/admin/users/${id}/reset-password`, {
+        method: 'POST',
+        body: JSON.stringify({ password }),
+      }),
+
+    loginHistory: (params: { page?: number; page_size?: number } = {}) => {
+      const qs = new URLSearchParams()
+      Object.entries(params).forEach(([k, v]) => v !== undefined && qs.set(k, String(v)))
+      return request<{ items: import('../types').LoginHistoryEntry[]; total: number; page: number; page_size: number }>(
+        `/api/admin/login-history?${qs}`,
+      )
+    },
+
+    auditLogs: (params: { page?: number; page_size?: number; action?: string; entity?: string } = {}) => {
+      const qs = new URLSearchParams()
+      Object.entries(params).forEach(([k, v]) => v !== undefined && v !== '' && qs.set(k, String(v)))
+      return request<{ items: import('../types').AuditLogEntry[]; total: number; page: number; page_size: number }>(
+        `/api/admin/audit-logs?${qs}`,
+      )
+    },
+
+    demoRequests: (params: { page?: number; page_size?: number; status?: string } = {}) => {
+      const qs = new URLSearchParams()
+      Object.entries(params).forEach(([k, v]) => v !== undefined && v !== '' && qs.set(k, String(v)))
+      return request<{ items: import('../types').DemoRequest[]; total: number; page: number; page_size: number }>(
+        `/api/demo-requests?${qs}`,
+      )
+    },
+
+    updateDemoRequest: (id: number, payload: { status?: string; notes?: string }) =>
+      request<{ demo_request: import('../types').DemoRequest }>(`/api/demo-requests/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      }),
+  },
 }

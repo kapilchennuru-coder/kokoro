@@ -5,6 +5,7 @@ export function ConfirmDialog({
   title,
   message,
   confirmLabel = 'Import Records',
+  busyLabel = 'Importing…',
   cancelLabel = 'Cancel',
   busy,
   onConfirm,
@@ -12,8 +13,9 @@ export function ConfirmDialog({
 }: {
   open: boolean
   title: string
-  message: string
+  message: ReactNode
   confirmLabel?: string
+  busyLabel?: string
   cancelLabel?: string
   busy?: boolean
   onConfirm: () => void
@@ -46,7 +48,7 @@ export function ConfirmDialog({
             {cancelLabel}
           </button>
           <button type="button" className="btn btn-primary" disabled={busy} onClick={onConfirm}>
-            {busy ? 'Importing…' : confirmLabel}
+            {busy ? busyLabel : confirmLabel}
           </button>
         </div>
       </div>
