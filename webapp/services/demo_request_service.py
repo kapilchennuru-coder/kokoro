@@ -6,6 +6,8 @@ from __future__ import annotations
 
 import re
 
+import phonenumbers
+
 import db
 
 EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
@@ -25,21 +27,33 @@ ADDRESS_FIELD_LABELS = {
     "state": "State / Province", "postal_code": "Postal / ZIP Code", "country": "Address Country",
 }
 
+# Mirrors website/src/content/countries.ts's COUNTRIES list (code -> name)
+# so backend error messages read the same way the frontend's would.
+COUNTRY_NAME_BY_CODE = {
+    "US": "United States", "CA": "Canada", "GB": "United Kingdom", "IN": "India",
+    "AU": "Australia", "DE": "Germany", "FR": "France", "IE": "Ireland",
+    "NL": "Netherlands", "SG": "Singapore", "AE": "United Arab Emirates",
+    "PH": "Philippines", "MX": "Mexico", "BR": "Brazil", "ZA": "South Africa",
+    "NZ": "New Zealand", "ES": "Spain", "IT": "Italy", "SE": "Sweden", "CH": "Switzerland",
+}
 
-def _validate_phone(dial_and_number: str) -> str | None:
-    """dial_and_number looks like '+91 9391944195' - matches what the
-    frontend sends (dial code + number joined with a space)."""
-    digits = re.sub(r"\D", "", dial_and_number)
-    if dial_and_number.strip().startswith("+91"):
-        # digits includes the leading 91 from the dial code, so the actual
-        # subscriber number is everything after that.
-        national_number = digits[2:] if digits.startswith("91") else digits
-        if len(national_number) != 10:
-            return "Please enter a valid 10-digit mobile number."
-        return None
-    if len(digits) < 6:
-        return "Enter a valid phone number."
-    return None
+
+def _validate_and_normalize_phone(phone: str, phone_country: str) -> tuple[str | None, str | None]:
+    """Validated against the real numbering-plan metadata for phone_country
+    (an ISO 3166-1 alpha-2 code, e.g. "US") via the same phonenumbers
+    library (Google's libphonenumber, Python port) the frontend's
+    libphonenumber-js uses - no hard-coded per-country digit counts here.
+    Returns (normalized_e164_or_None, error_message_or_None)."""
+    try:
+        parsed = phonenumbers.parse(phone, phone_country or None)
+    except phonenumbers.NumberParseException:
+        return None, "Enter a valid phone number."
+
+    if not phonenumbers.is_valid_number(parsed):
+        name = COUNTRY_NAME_BY_CODE.get(phone_country, phone_country)
+        return None, f"Please enter a valid phone number for {name}."
+
+    return phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164), None
 
 
 def submit(payload: dict, ip_address: str) -> dict:
@@ -51,8 +65,9 @@ def submit(payload: dict, ip_address: str) -> dict:
     if not EMAIL_RE.match(email):
         raise ValueError("Enter a valid email address.")
 
-    phone = str(payload.get("phone") or "").strip()
-    phone_error = _validate_phone(phone)
+    phone_raw = str(payload.get("phone") or "").strip()
+    phone_country = str(payload.get("phone_country") or "").strip().upper()
+    normalized_phone, phone_error = _validate_and_normalize_phone(phone_raw, phone_country)
     if phone_error:
         raise ValueError(phone_error)
 
@@ -84,7 +99,7 @@ def submit(payload: dict, ip_address: str) -> dict:
         "company_name": str(payload.get("company_name") or "").strip()[:255],
         "job_title": str(payload.get("job_title") or "").strip()[:150],
         "country": str(payload.get("country") or "").strip()[:100],
-        "phone": phone[:40],
+        "phone": (normalized_phone or phone_raw)[:40],
         "website": str(payload.get("website") or "").strip()[:255],
         "industry": industry[:150],
         "company_size": str(payload.get("company_size") or "").strip()[:50],
